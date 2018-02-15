@@ -1,0 +1,177 @@
+// This is the actual file 
+// Existing bugs are commeted in this file
+
+
+
+#include "stdafx.h"
+#include "Indexer.h"
+#include "stdlib.h"
+#include "stdio.h"
+#include "io.h"
+#include "string.h"
+
+
+FileDef	**fileIndex;
+int insertIndex;
+int maxIndex;
+
+void initIndexes()
+{
+	insertIndex = 0;
+	maxIndex = 1024;
+	fileIndex = new FileDef*[1024];
+	memset(fileIndex, 0, maxIndex);
+}
+
+// Since this is not object oriented code and we don't have distructors, 
+// we should have a method like below to free up the allocated dynamic memory after usage of the program
+/*
+void destroyIndexes()
+{
+    int startIndex = 0;
+    for(int i = startIndex; i< maxIndex; i++)
+	{
+		if (fileIndex[i])
+		{
+		   delete fileIndex[i];
+		}
+	}
+}
+*/
+
+void processDirectory(const char* name)
+{
+	static bool init = true;
+	if (init) {
+		init = false;
+		initIndexes();
+	}
+
+	char search[256];   
+	strcpy(search, name);  // its always good practise to set the buffer to empty before first use
+	                       // by using memeset
+	strcat(search, "\\*.*");
+
+	_finddata_t fd;
+	intptr_t h = _findfirst(search, &fd);
+	if (h != -1) {
+		do {
+			// This is a pointer to FileDef structure and FileDef structure is going to be allocated on heap
+			// Incase of non matching file extension type, we are not going to use this memory allocated
+			// so we should atleast free it in case of f->type = skip as shown below
+		
+			FileDef* f = new FileDef;
+			f->size = fd.size;
+
+			char fname[256];
+			strcpy(fname, name);
+			strcat(fname, "\\");
+			strcat(fname, fd.name);
+			_splitpath(fname, f->drive, f->path, f->name, f->ext);
+			if (strcmp(f->ext, ".txt") == 0) {
+				f->type = txt;
+			}
+			else if (strcmp(f->ext, ".xml") == 0) {
+				f->type = xml;
+			}
+			else if (strcmp(f->ext, ".exe") == 0) {
+				f->type = exe;
+			}
+			else if (strcmp(f->ext, ".doc") == 0) {
+				f->type = doc;
+			}
+			else if (strcmp(f->ext, ".xls") == 0) {
+				f->type = xls;
+			}
+			else if (strcmp(f->ext, ".ppt") == 0) {
+				f->type = ppt;
+			}
+			else {
+				f->type = skip;
+			}
+			if (f->type != skip) {
+				fileIndex[insertIndex++] = f;
+			}
+			// The following block is being added to freeup the dynamic memory allocated for FilDef structure
+			// as we are not going to use it incase of non-matching predefined extensions.
+			else
+			{
+				if (f)
+					delete f;
+			}
+
+		} while (_findnext(h, &fd) == 0);
+		_findclose(h);
+
+	}
+}
+
+// returning a int pointer is not necassary in this method
+// If so, then the caller should free up the memory after usage, which is not being done
+int* getFirstFile(FileType type, FileDef* fd)
+{
+	// It's best practise to do a null pointer check for pointers before first use in methods
+	
+	int tmp = 0;
+	while (fileIndex[tmp] != 0 && fileIndex[tmp]->type != type) ++tmp;
+	int* result = new int;
+	if ((*result = (fileIndex[tmp] == 0) ? -1 : tmp + 1) == -1)
+		return result;  // We are returning integer pointer here. Moreover the caller of this method is not freeing it after usage
+	                    // which will cause memory leak over time
+	*fd = *fileIndex[tmp];
+
+	return result;
+}
+
+int getNextFile(int* handle, FileDef* fd)
+{
+	// It's alway recommended to do a null pointer check for pointers before first use in methods
+	int tmp = *handle;
+	while (fileIndex[tmp] != 0 && fileIndex[tmp]->type != fd->type) ++tmp;
+	if (fileIndex[tmp] != 0) {
+		*fd = *fileIndex[tmp];
+		*handle = tmp + 1;
+		return 0;
+	}
+	return -1;
+}
+
+void listFiles(FileType type)
+{
+	printf("%30s%7s\r\n", "NAME", "SIZE");
+	FileDef fd;
+	int* handle = getFirstFile(type, &fd);
+	if (*handle != -1) {
+		do {
+			printf("%30s%7i\r\n", fd.name, fd.size);
+		} while (getNextFile(handle, &fd) == 0);
+	}
+}
+
+bool needsBackup(const FileDef* fd)
+{
+	// It's alway recommended to do a null pointer check for pointers before first use in methods
+	// We can improve the following switch case by using the default block
+	switch (fd->type) {
+	case doc:
+	case xls:
+		return true;
+	}
+	return false;
+}
+
+bool needsScan(const FileDef* fd)
+{
+	// It's alway recommended to do a null pointer check for pointers before first use in methods
+	return (fd->type == exe);
+}
+
+// test function
+void _testIndexer() {
+
+	processDirectory("C:\test directory1");
+	processDirectory("C:\test directory2");
+	listFiles(exe);
+	listFiles(txt);
+	listFiles(xml);
+}
